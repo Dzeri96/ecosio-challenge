@@ -3,22 +3,37 @@ package org.example;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Phaser;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.stream.Collectors;
 
-public class ConcurrencyManager {
+public class ConcurrencyManager implements AutoCloseable {
     private final Set<String> foundURLs;
     private final ExecutorService executor;
     private final Lock lock;
+    private final Phaser phaser;
 
-    public ConcurrencyManager(ExecutorService executor) {
-        this.executor = executor;
+    public ConcurrencyManager() {
+        this.executor = Executors.newVirtualThreadPerTaskExecutor();
         this.foundURLs = new HashSet<>();
         this.lock = new ReentrantReadWriteLock().writeLock();
+        this.phaser = new Phaser();
     }
 
-    public void scheduleScraping(Set<String> potentialURLs) {
+    public Set<String> scrape (String rootUrl) {
+        phaser.register();
+        scheduleScraping(Set.of(rootUrl));
+        phaser.arriveAndAwaitAdvance();
+        return foundURLs;
+    }
+
+    private void decrementPhaser() {
+        phaser.arriveAndDeregister();
+    }
+
+    private void scheduleScraping(Set<String> potentialURLs) {
         lock.lock();
         try {
             Set<String> newURLs = potentialURLs
@@ -28,14 +43,16 @@ public class ConcurrencyManager {
             foundURLs.addAll(newURLs);
             for (String newUrl : newURLs) {
                 System.out.println("Requesting scrape of " + newUrl);
-                executor.submit(new ScrapeRequestHandler(newUrl, this::scheduleScraping));
+                phaser.register(); // TODO: What if ScrapeRequestHandler throws on init?
+                executor.submit(new ScrapeRequestHandler(newUrl, this::scheduleScraping, this::decrementPhaser));
             }
         } finally {
             lock.unlock();
         }
     }
 
-    public Set<String> getFoundURLs() {
-        return foundURLs;
+    @Override
+    public void close() {
+        executor.close();
     }
 }

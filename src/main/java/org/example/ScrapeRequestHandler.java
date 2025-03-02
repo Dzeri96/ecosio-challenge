@@ -15,12 +15,18 @@ import java.util.regex.Pattern;
 public class ScrapeRequestHandler implements Runnable {
     private final String url;
     private final Consumer<Set<String>> resultCallback;
+    private final Runnable finishCallback;
     private final HttpClient httpClient;
     private final Pattern hrefPattern = Pattern.compile("a href=['\"]([^'\"]+)['\"]");
 
-    public ScrapeRequestHandler(String url, Consumer<Set<String>> resultCallback) {
+    public ScrapeRequestHandler(
+            String url,
+            Consumer<Set<String>> resultCallback,
+            Runnable finishCallback
+    ) {
         this.url = url;
         this.resultCallback = resultCallback;
+        this.finishCallback = finishCallback;
         this.httpClient = HttpClient
                 .newBuilder()
                 .followRedirects(HttpClient.Redirect.ALWAYS)
@@ -77,6 +83,8 @@ public class ScrapeRequestHandler implements Runnable {
             throw new RuntimeException(e);
         } catch (InterruptedException e) {
             System.err.println("Request to " + url + " interrupted!");
+        } finally {
+            finishCallback.run();
         }
     }
 }
