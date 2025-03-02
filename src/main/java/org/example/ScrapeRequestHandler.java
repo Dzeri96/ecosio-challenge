@@ -6,6 +6,7 @@ import java.net.URISyntaxException;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.time.Duration;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.function.Consumer;
@@ -17,7 +18,7 @@ public class ScrapeRequestHandler implements Runnable {
     private final Consumer<Set<URI>> resultCallback;
     private final Runnable finishCallback;
     private final HttpClient httpClient;
-    private final Pattern hrefPattern = Pattern.compile("a href=['\"](?=/|http)([^'\"]+)['\"]");
+    private final Pattern hrefPattern = Pattern.compile("a href=['\"](?=/|http)(((?!\\.png|\\.jpg|\\.jpeg|\\.svg|\\.pdf)[^'\"])+)['\"]");
 
     public ScrapeRequestHandler(
             URI url,
@@ -29,6 +30,7 @@ public class ScrapeRequestHandler implements Runnable {
         this.finishCallback = finishCallback;
         this.httpClient = HttpClient
                 .newBuilder()
+                .connectTimeout(Duration.ofSeconds(10))
                 .followRedirects(HttpClient.Redirect.ALWAYS)
                 .build();
     }
@@ -88,6 +90,7 @@ public class ScrapeRequestHandler implements Runnable {
         } catch (InterruptedException e) {
             System.err.println("Request to " + rootURI + " interrupted!");
         } finally {
+            System.err.println("Finished request to " + rootURI);
             finishCallback.run();
         }
     }

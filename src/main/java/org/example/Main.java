@@ -2,8 +2,8 @@ package org.example;
 
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.util.List;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 public class Main {
     public static void main(String[] args) throws URISyntaxException {
@@ -14,7 +14,12 @@ public class Main {
         URI rootURL = new URI(args[0]);
         try (ConcurrencyManager concMgr = new ConcurrencyManager()){
             Set<URI> foundUrls = concMgr.scrape(rootURL);
-            System.out.println(String.join("\n", foundUrls.stream().map(Object::toString).collect(Collectors.toSet())));
+            List<String> output = foundUrls
+                    .stream()
+                    .map(Object::toString)
+                    .sorted()
+                    .toList();
+            System.out.println(String.join("\n", output));
         }
     }
 }

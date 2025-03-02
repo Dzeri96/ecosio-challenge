@@ -54,7 +54,11 @@ public class ConcurrencyManager implements AutoCloseable {
             try {
                 phaser.register();
                 executor.submit(
-                        new ScrapeRequestHandler(newUrl, this::scheduleScraping, this::decrementPhaser)
+                        new ScrapeRequestHandler(
+                                newUrl,
+                                this::scheduleScraping,
+                                this::decrementPhaser
+                        )
                 );
             } catch (NullPointerException | RejectedExecutionException e) {
                 System.err.println(e.getMessage());
