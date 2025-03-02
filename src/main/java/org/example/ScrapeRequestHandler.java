@@ -13,18 +13,18 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class ScrapeRequestHandler implements Runnable {
-    private final String url;
-    private final Consumer<Set<String>> resultCallback;
+    private final URI rootURI;
+    private final Consumer<Set<URI>> resultCallback;
     private final Runnable finishCallback;
     private final HttpClient httpClient;
-    private final Pattern hrefPattern = Pattern.compile("a href=['\"]([^'\"]+)['\"]");
+    private final Pattern hrefPattern = Pattern.compile("a href=['\"](?=/|http)([^'\"]+)['\"]");
 
     public ScrapeRequestHandler(
-            String url,
-            Consumer<Set<String>> resultCallback,
+            URI url,
+            Consumer<Set<URI>> resultCallback,
             Runnable finishCallback
     ) {
-        this.url = url;
+        this.rootURI = url;
         this.resultCallback = resultCallback;
         this.finishCallback = finishCallback;
         this.httpClient = HttpClient
@@ -33,29 +33,19 @@ public class ScrapeRequestHandler implements Runnable {
                 .build();
     }
 
-    @Override
-    public void run() {
-        try {
-            URI rootURI = new URI(url);
-            String rootHost = rootURI.getHost();
+    private void handleResponse(HttpResponse<String> response) {
+        String rootHost = rootURI.getHost();
 
-            HttpRequest request = HttpRequest
-                    .newBuilder(rootURI)
-                    .GET()
-                    .build();
-
-            HttpResponse<String> response = httpClient
-                    .send(request, HttpResponse.BodyHandlers.ofString());
-            
-            if (response.statusCode() == 200) {
-                Set<String> foundURLs = new HashSet<>();
-                Matcher hrefMatcher = hrefPattern.matcher(response.body());
-                while (hrefMatcher.find()) {
-                    String rawHref = hrefMatcher.group(1);
+        if (response.statusCode() == 200) {
+            Set<URI> foundURLs = new HashSet<>();
+            Matcher hrefMatcher = hrefPattern.matcher(response.body());
+            while (hrefMatcher.find()) {
+                String rawHref = hrefMatcher.group(1);
+                try {
                     URI parsedHref = new URI(rawHref);
 
                     if (parsedHref.getHost() != null && parsedHref.getHost().equals(rootHost)) {
-                        foundURLs.add(rawHref);
+                        foundURLs.add(parsedHref);
                     } else if (parsedHref.getHost() == null) {
                         URI absoluteHrefURI = new URI(
                                 rootURI.getScheme(),
@@ -64,25 +54,39 @@ public class ScrapeRequestHandler implements Runnable {
                                 parsedHref.getQuery(),
                                 parsedHref.getFragment()
                         );
-                        foundURLs.add(absoluteHrefURI.toString());
+                        foundURLs.add(absoluteHrefURI);
                     }
+                } catch (URISyntaxException e) {
+                    System.err.println("URISyntaxException: " + e.getMessage());
                 }
-
-                //System.out.println("response = " + response.body());
-                //System.out.println("foundURLs = " + foundURLs);
-                resultCallback.accept(foundURLs);
-            } else {
-                System.err.println("Request to " + url + " returned code " + response.statusCode());
             }
-            
 
-        } catch (URISyntaxException e) {
-            System.err.println("URISyntaxException: " + e.getMessage());
-            throw new RuntimeException(e);
+            resultCallback.accept(foundURLs);
+        } else {
+            System.err.println("Request to " + rootURI + " returned code " + response.statusCode());
+        }
+    }
+
+    @Override
+    public void run() {
+        try {
+            HttpRequest request = HttpRequest
+                    .newBuilder(rootURI)
+                    .header("User-Agent", "curl/8.5.0")
+                    .header("Accept", "text/html")
+                    .GET()
+                    .build();
+
+            HttpResponse<String> response = httpClient
+                    .send(request, HttpResponse.BodyHandlers.ofString());
+
+            handleResponse(response);
+
         } catch (IOException e) {
+            System.err.println("IOException: " + e.getMessage());
             throw new RuntimeException(e);
         } catch (InterruptedException e) {
-            System.err.println("Request to " + url + " interrupted!");
+            System.err.println("Request to " + rootURI + " interrupted!");
         } finally {
             finishCallback.run();
         }
